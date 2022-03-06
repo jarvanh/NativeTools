@@ -140,10 +140,10 @@ object NetSpeedNotificationHelper {
 
         createChannels(context)
 
-        val builder = if (configuration.showBlankNotification) {
+        val builder = if (configuration.needHideNotification) {
             // 显示透明图标，并降低通知优先级
             NotificationCompat.Builder(context, CHANNEL_ID_SILENCE)
-                .setPriority(NotificationCompat.PRIORITY_LOW)
+                .setPriority(NotificationCompat.PRIORITY_MIN)
                 .setSmallIcon(createBlankIcon(configuration))
         } else {
             NotificationCompat.Builder(context, CHANNEL_ID_DEFAULT)
@@ -212,7 +212,9 @@ object NetSpeedNotificationHelper {
             builder.setContentIntent(pendingIntent)
         }
 
-        return builder.build()
+        return builder.build().apply {
+            configuration.notification = this
+        }
     }
 
     private var notificationChannelCreated = false

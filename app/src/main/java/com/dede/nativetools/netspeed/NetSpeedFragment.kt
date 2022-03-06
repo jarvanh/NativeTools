@@ -167,8 +167,10 @@ class NetSpeedFragment : PreferenceFragmentCompat(),
             NetSpeedPreferences.KEY_NET_SPEED_USAGE_JUST_MOBILE -> {
                 configuration.justMobileUsage = newValue as Boolean
                 event(FirebaseAnalytics.Event.SELECT_ITEM) {
-                    param(FirebaseAnalytics.Param.ITEM_NAME,
-                        configuration.justMobileUsage.toString())
+                    param(
+                        FirebaseAnalytics.Param.ITEM_NAME,
+                        configuration.justMobileUsage.toString()
+                    )
                     param(FirebaseAnalytics.Param.CONTENT_TYPE, "只显示移动流量使用")
                 }
             }
@@ -181,8 +183,10 @@ class NetSpeedFragment : PreferenceFragmentCompat(),
             NetSpeedPreferences.KEY_NET_SPEED_HIDE_NOTIFICATION -> {
                 configuration.hideNotification = newValue as Boolean
                 event(FirebaseAnalytics.Event.SELECT_ITEM) {
-                    param(FirebaseAnalytics.Param.ITEM_NAME,
-                        configuration.hideNotification.toString())
+                    param(
+                        FirebaseAnalytics.Param.ITEM_NAME,
+                        configuration.hideNotification.toString()
+                    )
                     param(FirebaseAnalytics.Param.CONTENT_TYPE, "隐藏通知")
                 }
             }
@@ -208,7 +212,7 @@ class NetSpeedFragment : PreferenceFragmentCompat(),
     }
 
     override fun onDestroyView() {
-        controller.unbindService()
+        controller.release()
         super.onDestroyView()
     }
 

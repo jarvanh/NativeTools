@@ -8,6 +8,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.IBinder
 import android.os.PowerManager
+import android.util.Log
 import androidx.core.os.HandlerCompat
 import com.dede.nativetools.netspeed.INetSpeedInterface
 import com.dede.nativetools.netspeed.NetSpeedConfiguration
@@ -37,6 +38,8 @@ class NetSpeedService : Service(), Runnable {
         private const val DELAY_BLANK_NOTIFICATION_ICON = 3000L
 
         const val ACTION_CLOSE = "com.dede.nativetools.CLOSE"
+        const val ACTION_START = "com.dede.nativetools.START"
+        const val ACTION_STOP_FOREGROUND = "com.dede.nativetools.STOP_FOREGROUND"
 
         const val EXTRA_CONFIGURATION = "extra_configuration"
 
@@ -69,16 +72,12 @@ class NetSpeedService : Service(), Runnable {
     val lifecycleJob = Job()
 
     private val showBlankNotificationRunnable = this
+    private var isForegroundMode = false
 
     override fun run() {
-        // 显示透明图标通知
-        configuration.showBlankNotification = true
-        val notify =
-            NetSpeedNotificationHelper.createNotification(this,
-                configuration,
-                netSpeedCompute.rxSpeed,
-                netSpeedCompute.txSpeed)
-        notificationManager.notify(NOTIFY_ID, notify)
+        // 需要隐藏通知
+        configuration.needHideNotification = true
+        update(configuration, netSpeedCompute.rxSpeed, netSpeedCompute.txSpeed)
     }
 
     private val netSpeedCompute = NetSpeedCompute { rxSpeed, txSpeed ->
@@ -99,14 +98,26 @@ class NetSpeedService : Service(), Runnable {
             }
         } else {
             uiHandler.removeCallbacks(showBlankNotificationRunnable)
-            configuration.showBlankNotification = false
+            configuration.needHideNotification = false
+        }
+        update(configuration, rxSpeed, txSpeed)
+    }
+
+    private val configuration = NetSpeedConfiguration()
+
+    private fun update(
+        configuration: NetSpeedConfiguration,
+        rxSpeed: Long = 0L,
+        txSpeed: Long = 0L
+    ) {
+        if (configuration.needHideNotification && !isForegroundMode) {
+            notificationManager.cancel(NOTIFY_ID)
+            return
         }
         val notify =
             NetSpeedNotificationHelper.createNotification(this, configuration, rxSpeed, txSpeed)
         notificationManager.notify(NOTIFY_ID, notify)
     }
-
-    private val configuration = NetSpeedConfiguration()
 
     override fun onBind(intent: Intent): IBinder {
         return NetSpeedBinder(this)
@@ -117,19 +128,35 @@ class NetSpeedService : Service(), Runnable {
         val intentFilter = IntentFilter(
             Intent.ACTION_SCREEN_ON,// 打开屏幕
             Intent.ACTION_SCREEN_OFF,// 关闭屏幕
+            ACTION_STOP_FOREGROUND,
             ACTION_CLOSE// 关闭
         )
         registerReceiver(innerReceiver, intentFilter)
+        sendBroadcast(Intent(ACTION_START))// 发送服务开启广播
 
-        startForeground()
         resume()
     }
 
     private fun startForeground() {
-        val notify = track("创建通知") {
-            NetSpeedNotificationHelper.createNotification(this, configuration)
+        if (isForegroundMode) {
+            return
         }
+        Log.i("NetSpeedService", "startForeground: ")
+        val notify = configuration.notification ?: NetSpeedNotificationHelper.createNotification(
+            this,
+            configuration
+        )
         startForeground(NOTIFY_ID, notify)
+        isForegroundMode = true
+    }
+
+    private fun stopForeground1(removeNotification: Boolean) {
+        if (!isForegroundMode) {
+            return
+        }
+        Log.i("NetSpeedService", "stopForeground1: " + removeNotification)
+        isForegroundMode = false
+        stopForeground(removeNotification)
     }
 
     /**
@@ -152,17 +179,15 @@ class NetSpeedService : Service(), Runnable {
         }
         this.configuration.updateFrom(configuration)
             .also { netSpeedCompute.interval = it.interval }
-        val notification = NetSpeedNotificationHelper.createNotification(
-            this,
-            this.configuration,
-            this.netSpeedCompute.rxSpeed,
-            this.netSpeedCompute.txSpeed
-        )
-        notificationManager.notify(NOTIFY_ID, notification)
+        update(configuration, netSpeedCompute.rxSpeed, netSpeedCompute.txSpeed)
     }
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val configuration = intent?.extra<NetSpeedConfiguration>(EXTRA_CONFIGURATION)
+    override fun onStartCommand(intent: Intent, flags: Int, startId: Int): Int {
+        startForeground()
+        if (Logic.isAccessibilityEnable(this)) {
+            stopForeground1(false)
+        }
+        val configuration = intent.extra<NetSpeedConfiguration>(EXTRA_CONFIGURATION)
         updateConfiguration(configuration)
         // https://developer.android.google.cn/guide/components/services#CreatingAService
         // https://developer.android.google.cn/reference/android/app/Service#START_REDELIVER_INTENT
@@ -172,7 +197,7 @@ class NetSpeedService : Service(), Runnable {
     override fun onDestroy() {
         lifecycleJob.cancel()
         netSpeedCompute.destroy()
-        stopForeground(true)
+        stopForeground1(true)
         notificationManager.cancel(NOTIFY_ID)
         unregisterReceiver(innerReceiver)
         super.onDestroy()
@@ -187,6 +212,9 @@ class NetSpeedService : Service(), Runnable {
             when (intent?.action ?: return) {
                 ACTION_CLOSE -> {
                     stopSelf()
+                }
+                ACTION_STOP_FOREGROUND -> {
+                    stopForeground1(false)
                 }
                 Intent.ACTION_SCREEN_ON -> {
                     track("网速服务广播亮屏恢复") {

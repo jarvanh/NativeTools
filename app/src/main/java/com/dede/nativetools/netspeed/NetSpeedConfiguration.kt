@@ -1,5 +1,6 @@
 package com.dede.nativetools.netspeed
 
+import android.app.Notification
 import android.graphics.Bitmap
 import android.os.Parcelable
 import androidx.annotation.FloatRange
@@ -43,7 +44,10 @@ data class NetSpeedConfiguration @JvmOverloads constructor(
     var cachedBitmap: Bitmap? = null
 
     @IgnoredOnParcel
-    var showBlankNotification: Boolean = false
+    var needHideNotification: Boolean = false
+
+    @IgnoredOnParcel
+    var notification: Notification? = null
 
     fun updateFrom(configuration: NetSpeedConfiguration): NetSpeedConfiguration {
         this.interval = configuration.interval

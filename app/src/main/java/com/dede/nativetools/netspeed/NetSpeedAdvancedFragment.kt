@@ -224,7 +224,7 @@ class NetSpeedAdvancedFragment : PreferenceFragmentCompat(),
     }
 
     override fun onDestroyView() {
-        controller.unbindService()
+        controller.release()
         super.onDestroyView()
     }
 

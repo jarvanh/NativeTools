@@ -3,62 +3,104 @@ package com.dede.nativetools.netspeed.service
 import android.content.*
 import android.os.IBinder
 import android.os.RemoteException
-import androidx.core.content.ContextCompat
 import com.dede.nativetools.netspeed.INetSpeedInterface
 import com.dede.nativetools.netspeed.NetSpeedConfiguration
 import com.dede.nativetools.netspeed.NetSpeedPreferences
 import com.dede.nativetools.util.Intent
+import com.dede.nativetools.util.IntentFilter
+import com.dede.nativetools.util.startService
 import com.dede.nativetools.util.toast
 
-typealias OnCloseCallback = () -> Unit
+typealias OnEventCallback = () -> Unit
 
 class NetSpeedServiceController(context: Context) : INetSpeedInterface.Default(),
     ServiceConnection {
 
     private val appContext = context.applicationContext
-
+    private var register = false
     private var binder: INetSpeedInterface? = null
 
-    var onCloseCallback: OnCloseCallback? = null
+    var onCloseCallback: OnEventCallback? = null
+    var onStartCallback: OnEventCallback? = null
 
-    private val closeReceiver = object : BroadcastReceiver() {
+    private val eventReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            val onCloseCallback = onCloseCallback
-            unbindService()
-            NetSpeedPreferences.status = false
-            onCloseCallback?.invoke()
+            when (intent?.action ?: return) {
+                NetSpeedService.ACTION_START -> {
+                    val onStartCallback = onStartCallback
+                    onStartCallback?.invoke()
+                }
+                NetSpeedService.ACTION_CLOSE -> {
+                    val onCloseCallback = onCloseCallback
+                    unbindService()
+                    NetSpeedPreferences.status = false
+                    onCloseCallback?.invoke()
+                }
+            }
         }
     }
 
+    fun init(onStartCallback: OnEventCallback? = null, onCloseCallback: OnEventCallback? = null) {
+        this.onStartCallback = onStartCallback
+        this.onCloseCallback = onCloseCallback
+        registerReceiver()
+    }
+
+    private fun registerReceiver() {
+        if (!register) {
+            val intentFilter =
+                IntentFilter(NetSpeedService.ACTION_CLOSE, NetSpeedService.ACTION_START)
+            appContext.registerReceiver(eventReceiver, intentFilter)
+        }
+        register = true
+    }
+
+    private fun unregisterReceiver() {
+        if (register) {
+            appContext.unregisterReceiver(eventReceiver)
+        }
+        register = false
+    }
+
     fun startService(bind: Boolean = false) {
+        registerReceiver()
         val intent = NetSpeedService.createIntent(appContext)
-        ContextCompat.startForegroundService(appContext, intent)
+        appContext.startService(intent, true)
         if (bind) {
             bindService()
         }
     }
 
-    fun bindService(onCloseCallback: OnCloseCallback? = null) {
-        this.onCloseCallback = onCloseCallback
+    fun bindService() {
+        registerReceiver()
         val intent = NetSpeedService.createIntent(appContext)
         appContext.bindService(intent, this, Context.BIND_AUTO_CREATE)
-        appContext.registerReceiver(closeReceiver, IntentFilter(NetSpeedService.ACTION_CLOSE))
     }
 
     fun stopService() {
         val intent = Intent<NetSpeedService>(appContext)
         unbindService()
         appContext.stopService(intent)
+        appContext.sendBroadcast(Intent(NetSpeedService.ACTION_CLOSE))
+    }
+
+    fun stopForeground() {
+        appContext.sendBroadcast(Intent(NetSpeedService.ACTION_STOP_FOREGROUND))
     }
 
     fun unbindService() {
-        onCloseCallback = null
         if (binder == null) {
             return
         }
-        appContext.unregisterReceiver(closeReceiver)
         appContext.unbindService(this)
         binder = null
+    }
+
+    fun release() {
+        unbindService()
+        unregisterReceiver()
+        onStartCallback = null
+        onCloseCallback = null
     }
 
     override fun onServiceConnected(name: ComponentName?, service: IBinder?) {

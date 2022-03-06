@@ -1,5 +1,6 @@
 package com.dede.nativetools.util
 
+import android.accessibilityservice.AccessibilityService
 import android.app.AppOpsManager
 import android.content.Context
 import android.content.Intent
@@ -8,12 +9,16 @@ import android.os.Build
 import android.os.PowerManager
 import android.os.Process
 import android.provider.Settings
+import android.text.TextUtils
+import android.view.accessibility.AccessibilityManager
 import androidx.activity.result.ActivityResult
+import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
 import com.dede.nativetools.BuildConfig
 import com.dede.nativetools.NativeToolsApp
 import com.dede.nativetools.R
 import com.dede.nativetools.netspeed.NetSpeedPreferences
+import com.dede.nativetools.netspeed.service.AliveAccessibilityService
 import com.dede.nativetools.netspeed.service.NetSpeedNotificationHelper
 import com.dede.nativetools.netspeed.stats.NetStats
 import com.dede.nativetools.netspeed.utils.NetworkUsageUtil
@@ -58,7 +63,43 @@ fun Context.getVersionSummary(): String {
     return getString(R.string.summary_about_version, versionName, BuildConfig.VERSION_CODE)
 }
 
+fun Context.isAccessibilityEnable(
+    packageName: String,
+    clazz: Class<out AccessibilityService>
+): Boolean {
+    val accessibilityManager =
+        this.getSystemService(AppCompatActivity.ACCESSIBILITY_SERVICE) as AccessibilityManager
+    if (!accessibilityManager.isEnabled) {
+        return false
+    }
+
+    val services = Settings.Secure.getString(
+        this.contentResolver,
+        Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+    )
+    if (TextUtils.isEmpty(services)) {
+        return false
+    }
+    val stringSplitter = TextUtils.SimpleStringSplitter(':')
+        .apply { setString(services) }
+    val serviceName = packageName + "/" + clazz.canonicalName
+    while (stringSplitter.hasNext()) {
+        val next = stringSplitter.next()
+        if (next == serviceName) {
+            return true
+        }
+    }
+    return false
+}
+
 object Logic {
+
+    fun isAccessibilityEnable(context: Context): Boolean {
+        return context.isAccessibilityEnable(
+            context.packageName,
+            AliveAccessibilityService::class.java
+        )
+    }
 
     fun isSimplifiedChinese(context: Context): Boolean {
         val local = getLocale(context)
